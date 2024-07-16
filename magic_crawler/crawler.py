@@ -80,7 +80,7 @@ async def extract_text_from_url_crawler_local(url):
                                     data={'url': url, 'timeout': 2}) as response:
                 html = await response.read()
                 return {
-                    'raw': html,
+                    'raw': html.decode(),
                     **convert_html_to_markdown(html)
                 }
         except Exception as e:
@@ -96,7 +96,7 @@ async def extract_text_from_url_crawler_pro(url):
             async with session.get(url) as response:
                 html = await response.read()
                 return {
-                    'raw': html,
+                    'raw': html.decode(),
                     **convert_html_to_markdown(html)
                 }
     except Exception as e:
