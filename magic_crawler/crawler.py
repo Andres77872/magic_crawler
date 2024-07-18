@@ -88,16 +88,19 @@ async def extract_text_from_url_crawler_local(url):
 
 
 async def extract_text_from_url_crawler_pro(url):
-    try:
-        headers = {
-            'User-Agent': ua
-        }
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url) as response:
-                html = await response.read()
-                return {
-                    'raw': html.decode(),
-                    **convert_html_to_markdown(html)
-                }
-    except Exception as e:
-        print(f"Error fetching {url}: {e}")
+    headers = {
+        'User-Agent': ua
+    }
+
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, proxy=os.environ['CRAWLER_PROXY'], ssl=False) as response:
+            print(response)
+            data = await response.read()
+            return {
+                'raw': data.decode(),
+                **convert_html_to_markdown(data)
+            }
