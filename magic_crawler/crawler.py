@@ -4,6 +4,7 @@ import ssl
 import urllib.request
 import aiohttp
 import html2text
+from markdownify import MarkdownConverter
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -13,6 +14,11 @@ opener = urllib.request.build_opener(
          'https': os.environ['CRAWLER_PROXY']}))
 
 ua = 'magic-llm https://arz.ai'
+
+
+class MagicCrawlerParser(object):
+    HTML2TEXT = 'html2text'
+    MARKDOWNINFY = 'markdownify'
 
 
 def clean_html(html_content) -> str:
@@ -32,24 +38,28 @@ def clean_html(html_content) -> str:
         for element in soup.select(selector):
             element.decompose()
 
-    # Extract text content, preserving tags for html2text to convert
-    cleaned_html = str(soup)
-
-    return cleaned_html
+    return soup
 
 
-def convert_html_to_markdown(html_content):
+def convert_html_to_markdown(html_content, clean: bool = True, parser: str = 'html2text'):
     # Clean the HTML content
-    cleaned_html = clean_html(html_content)
-
+    if clean:
+        cleaned_html = clean_html(html_content)
+    else:
+        cleaned_html = BeautifulSoup(html_content, 'html.parser')
     # Convert the cleaned HTML to Markdown
-    h = html2text.HTML2Text()
-    h.ignore_links = False
-    markdown_content = h.handle(cleaned_html)
+    if parser == MagicCrawlerParser.HTML2TEXT:
+        h = html2text.HTML2Text()
+        h.ignore_links = False
+        markdown_content = h.handle(str(cleaned_html))
+    elif parser == MagicCrawlerParser.MARKDOWNINFY:
+        markdown_content = MarkdownConverter().convert_soup(cleaned_html)
+    else:
+        raise ValueError('parser must be html2text or markdownify')
 
     return {
-        'markdown': markdown_content,
-        'text': cleaned_html
+        'markdown': m if type(m := markdown_content) is str else str(m),
+        'text': str(cleaned_html)
     }
 
 
@@ -69,38 +79,49 @@ async def extract_text_from_url_crawler_jina(url):
             print(f"Error fetching {url}: {e}")
 
 
-async def extract_text_from_url_crawler_local(url):
-    headers = {
+async def extract_text_from_url_crawler_local(url,
+                                              headers=None,
+                                              cookies=None,
+                                              **kwargs):
+    async with aiohttp.ClientSession(headers={
         'User-Agent': ua,
         'token-access': os.environ['CRAWLER_TOKEN_ACCESS']
-    }
-    async with aiohttp.ClientSession(headers=headers) as session:
+    }) as session:
         try:
+            data = {
+                'url': url,
+                'timeout': 2
+            }
+            if headers is not None:
+                data.update(headers)
+            if cookies is not None:
+                data.update(cookies)
+
             async with session.post('https://crawler.arz.ai/',
-                                    data={'url': url, 'timeout': 2}) as response:
+                                    data=data) as response:
                 html = await response.read()
                 return {
                     'raw': html.decode(),
-                    **convert_html_to_markdown(html)
+                    **convert_html_to_markdown(html, **kwargs)
                 }
         except Exception as e:
             print(f"Error fetching {url}: {e}")
 
 
-async def extract_text_from_url_crawler_pro(url):
-    headers = {
-        'User-Agent': ua
-    }
-
+async def extract_text_from_url_crawler_pro(url, **kwargs):
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, proxy=os.environ['CRAWLER_PROXY'], ssl=False) as response:
-            print(response)
+        async with session.get(url,
+                               headers={
+                                   'User-Agent': ua
+                               },
+                               proxy=os.environ['CRAWLER_PROXY'],
+                               ssl=False) as response:
             data = await response.read()
             return {
                 'raw': data.decode(),
-                **convert_html_to_markdown(data)
+                **convert_html_to_markdown(data, **kwargs)
             }
