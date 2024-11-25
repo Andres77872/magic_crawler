@@ -14,7 +14,7 @@ async def extract_text_from_url_crawler_jina(url):
             async with session.get(f'https://r.jina.ai/{url}') as response:
                 markdown = await response.read()
                 return {
-                    'markdown': markdown
+                    'markdown': markdown.decode()
                 }
         except Exception as e:
             print(f"Error fetching {url}: {e}")
